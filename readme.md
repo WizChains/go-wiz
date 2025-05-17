@@ -181,6 +181,11 @@ npx --yes @chainsafe/lodestar validator import \
   --importKeystores /root/wiz/validator_keys/validator_keys/keystore-* \
   --importKeystoresPassword /root/wiz/validator_keys/password.txt
 
+mkdir -p /root/wiz/node1/vc-data/validator-db/validators
+cp /root/wiz/validator_keys/validator_keys/keystore-* /root/wiz/node1/vc-data/validator-db/validators/
+cp /root/wiz/validator_keys/password.txt /root/wiz/node1/vc-data/validator-db/
+
+
 # 19. Start Lodestar Validator Client
 npx --yes @chainsafe/lodestar validator \
   --dataDir /root/wiz/node1/vc-data \
