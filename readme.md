@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =========================================
-# ✅ Ethereum PoS Devnet Setup - Updated for Lodestar & Geth 2025 (Minimal Preset)
+# ✅ Wiz PoS Appchain Setup - Lodestar & Geth
 # =========================================
 
 # 1. Install dependencies
