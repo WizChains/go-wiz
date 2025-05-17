@@ -106,7 +106,7 @@ python3 -m venv venv-deposit
 source venv-deposit/bin/activate
 pip install -r requirements.txt
 python setup.py install
-./deposit.sh existing-mnemonic --num_validators=4 --validator_start_index=0 --chain=devnet --folder=/root/wiz/validator_keys
+./deposit.sh new-mnemonic --num_validators=4 --chain=devnet --folder=/root/wiz/validator_keys
 deactivate
 
 # 11. Generate genesis state
