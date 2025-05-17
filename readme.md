@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =========================================
-# ✅ Wiz Chain PoS Setup 
+# ✅ Ethereum PoS Devnet Setup - Updated with Lodestar CLI 2025
 # =========================================
 
 # 1. Install dependencies
@@ -69,9 +69,10 @@ cat > genesis.json <<EOF
 }
 EOF
 
+
 # 7. Create config.yaml for consensus layer
 cat > config.yaml <<EOF
-PRESET_BASE: "mainnet"
+PRESET_BASE: "minimal"
 CONFIG_NAME: "devnet"
 MIN_GENESIS_ACTIVE_VALIDATOR_COUNT: 4
 MIN_GENESIS_TIME: 1607428800
@@ -99,11 +100,11 @@ cat > mnemonics.yaml <<EOF
   wd_prefix: "0x01"
 EOF
 
-# 9. Create valid jwt.hex (hex-encoded, NOT binary)
+# 9. Create jwt.hex
 openssl rand -hex 32 | tr -d "\n" > /root/wiz/jwt.hex
 chmod 600 /root/wiz/jwt.hex
 
-# 10. Generate genesis state for beacon chain
+# 10. Generate genesis state
 eth-beacon-genesis devnet \
   --eth1-config /root/wiz/genesis.json \
   --config /root/wiz/config.yaml \
@@ -115,7 +116,7 @@ eth-beacon-genesis devnet \
 mkdir -p /root/wiz/node1/el-data
 geth --datadir /root/wiz/node1/el-data init /root/wiz/genesis.json
 
-# 12. Start Geth (Execution Layer)
+# 12. Start Geth
 geth --datadir /root/wiz/node1/el-data \
   --networkid 1337 \
   --authrpc.jwtsecret /root/wiz/jwt.hex \
@@ -128,22 +129,24 @@ geth --datadir /root/wiz/node1/el-data \
   --nodiscover \
   --verbosity 3
 
-# 13. Start Lodestar (Consensus Layer)
+# 13. Start Lodestar Beacon Node
 lodestar beacon \
   --dataDir /root/wiz/node1/cl-data \
-  --network /root/wiz/config.yaml \
-  --genesisState /root/wiz/genesis.ssz \
-  --params.preset=mainnet \
+  --network=dev \
+  --paramsFile /root/wiz/config.yaml \
+  --genesisStateFile /root/wiz/genesis.ssz \
   --execution.urls=http://localhost:8551 \
-  --jwt-secret=/root/wiz/jwt.hex \
-  --discovery.enabled=false \
-  --enr.autoUpdate=false
+  --jwtSecret=/root/wiz/jwt.hex \
+  --persistNetworkIdentity=false \
+  --rest.address=0.0.0.0 \
+  --logLevel=info
 
-# 14. Start Lodestar validator
+# 14. Start Lodestar Validator
 lodestar validator \
   --dataDir /root/wiz/node1/vc-data \
-  --network /root/wiz/config.yaml \
-  --params.preset=mainnet \
+  --network=dev \
+  --paramsFile /root/wiz/config.yaml \
   --mnemonic "test test test test test test test test test test test junk" \
   --numValidators 4 \
   --beaconNodes=http://localhost:9596
+
