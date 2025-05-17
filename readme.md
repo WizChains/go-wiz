@@ -1,135 +1,149 @@
-Ubuntu — Full Tool Install (Docker + Geth + Bootnode)
-1. ⚙️ Update and Upgrade
-sudo apt update && sudo apt upgrade -y
+#!/bin/bash
 
+# =========================================
+# ✅ Wiz Chain PoS Setup 
+# =========================================
 
-2. 🐳 Install Docker Engine
-sudo apt install -y ca-certificates curl gnupg lsb-release
+# 1. Install dependencies
+sudo apt update && sudo apt install -y \
+  build-essential git curl wget jq make unzip \
+  golang nodejs npm openssl xxd
 
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# 2. Build and install Geth
+cd ~
+git clone https://github.com/ethereum/go-ethereum.git
+cd go-ethereum
+make geth
+sudo cp build/bin/geth /usr/local/bin/
 
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# 3. Install Lodestar
+npm install -g @chainsafe/lodestar
 
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+# 4. Build eth-beacon-genesis
+cd ~
+git clone https://github.com/ethpandaops/eth-beacon-genesis.git
+cd eth-beacon-genesis
+go build ./cmd/eth-beacon-genesis
+sudo cp eth-beacon-genesis /usr/local/bin/
 
-Post-install (optional but useful):
-sudo usermod -aG docker $USER
-newgrp docker
+# 5. Prepare working directory
+mkdir -p /root/wiz && cd /root/wiz
 
-3. 🔧 Install Geth + Bootnode
-
-sudo add-apt-repository -y ppa:ethereum/ethereum
-sudo apt update
-sudo apt install -y ethereum
-
-This gives you:
-
-geth → Ethereum node
-
-bootnode → Enode key generation utility
-
-4. 🧪 Verify Install
-
-geth version
-bootnode -h
-docker --version
-
-
-
-
-From Zero to Live Permissioned Wiz Node
-⚙️ STEP 1 — Setup Project Directory
-mkdir wiz && cd wiz
-mkdir -p node1/data/geth
-
-🔐 STEP 2 — Generate Node Key (Node Identity)
-
-bootnode -genkey node1/data/geth/nodekey
-
-🛰️ STEP 3 — Get Public Enode (To Share)
-
-bootnode -nodekey node1/data/geth/nodekey -writeaddress
-It outputs:
-<public_key> (like 4f5b7b...)
-
-Now build the enode URL (replace YOUR_IP):
-
-echo "enode://<public_key>@YOUR_IP:30303" > node1/enode.txt
-
-
-🧾 STEP 4 — Create genesis.json
-
-cat <<EOF > genesis.json
+# 6. Create genesis.json
+cat > genesis.json <<EOF
 {
   "config": {
-    "chainId": 777,
+    "chainId": 1337,
     "homesteadBlock": 0,
     "eip150Block": 0,
     "eip155Block": 0,
-    "eip158Block": 0
-  },
-  "difficulty": "0x1",
-  "gasLimit": "0x8000000",
-  "alloc": {
-    "0x0000000000000000000000000000000000000001": {
-      "balance": "100000000000000000000000"
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "muirGlacierBlock": 0,
+    "berlinBlock": 0,
+    "londonBlock": 0,
+    "shanghaiTime": 0,
+    "cancunTime": 0,
+    "terminalTotalDifficulty": 0,
+    "terminalTotalDifficultyPassed": true,
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": 3338477
+      }
     }
-  }
+  },
+  "nonce": "0x0",
+  "timestamp": "0x0",
+  "extraData": "0x",
+  "gasLimit": "0x1c9c380",
+  "difficulty": "0x0",
+  "baseFeePerGas": "0x7",
+  "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "coinbase": "0x0000000000000000000000000000000000000000",
+  "alloc": {}
 }
 EOF
 
-🧱 STEP 5 — Initialize the Chain from Genesis
-
-geth --datadir node1/data init genesis.json
-
-📡 STEP 6 — Create static-nodes.json with Whitelisted Peers
-If you only have one node for now (self-peering):
-
-
-cat <<EOF > node1/data/static-nodes.json
-[
-  "enode://<public_key>@YOUR_IP:30303"
-]
+# 7. Create config.yaml for consensus layer
+cat > config.yaml <<EOF
+PRESET_BASE: "mainnet"
+CONFIG_NAME: "devnet"
+MIN_GENESIS_ACTIVE_VALIDATOR_COUNT: 4
+MIN_GENESIS_TIME: 1607428800
+GENESIS_FORK_VERSION: 0x00000000
+GENESIS_DELAY: 30
+ALTAIR_FORK_VERSION: 0x01000000
+ALTAIR_FORK_EPOCH: 0
+BELLATRIX_FORK_VERSION: 0x02000000
+BELLATRIX_FORK_EPOCH: 0
+CAPELLA_FORK_VERSION: 0x03000000
+CAPELLA_FORK_EPOCH: 0
+DENEB_FORK_VERSION: 0x04000000
+DENEB_FORK_EPOCH: 0
+ELECTRA_FORK_VERSION: 0x05000000
+ELECTRA_FORK_EPOCH: 0
 EOF
 
-Later you’ll add more enode URLs from other nodes to this list.
+# 8. Create mnemonics.yaml
+cat > mnemonics.yaml <<EOF
+- mnemonic: "test test test test test test test test test test test junk"
+  start: 0
+  count: 4
+  balance: 32000000000
+  wd_address: "0x000000000000000000000000000000000000dead"
+  wd_prefix: "0x01"
+EOF
 
-🧑‍💻 STEP 7 — Create an Ethereum Account (Optional)
+# 9. Create valid jwt.hex (hex-encoded, NOT binary)
+openssl rand -hex 32 | tr -d "\n" > /root/wiz/jwt.hex
+chmod 600 /root/wiz/jwt.hex
 
-geth --datadir node1/data account new
-Copy the address if you want to pre-allocate balance in genesis.json.
+# 10. Generate genesis state for beacon chain
+eth-beacon-genesis devnet \
+  --eth1-config /root/wiz/genesis.json \
+  --config /root/wiz/config.yaml \
+  --mnemonics /root/wiz/mnemonics.yaml \
+  --state-output /root/wiz/genesis.ssz \
+  --json-output /root/wiz/genesis-cl.json
 
-🚀 STEP 8 — Start the Node
+# 11. Initialize Geth
+mkdir -p /root/wiz/node1/el-data
+geth --datadir /root/wiz/node1/el-data init /root/wiz/genesis.json
 
-geth --datadir node1/data \
-     --networkid 1337 \
-     --nodiscover \
-     --http \
-     --http.addr 0.0.0.0 \
-     --http.port 8545 \
-     --http.api web3,eth,net,personal \
-     --port 30303 \
-     --verbosity 3 \
-     console
-This will start your custom Ethereum chain with permissioned peering.
+# 12. Start Geth (Execution Layer)
+geth --datadir /root/wiz/node1/el-data \
+  --networkid 1337 \
+  --authrpc.jwtsecret /root/wiz/jwt.hex \
+  --authrpc.port 8551 \
+  --authrpc.addr 0.0.0.0 \
+  --authrpc.vhosts=* \
+  --http --http.addr 0.0.0.0 --http.port 8545 \
+  --http.api engine,eth,web3,net \
+  --port 30303 \
+  --nodiscover \
+  --verbosity 3
 
-🧪 TO ADD MORE NODES
-Repeat for each new node:
+# 13. Start Lodestar (Consensus Layer)
+lodestar beacon \
+  --dataDir /root/wiz/node1/cl-data \
+  --network /root/wiz/config.yaml \
+  --genesisState /root/wiz/genesis.ssz \
+  --params.preset=mainnet \
+  --execution.urls=http://localhost:8551 \
+  --jwt-secret=/root/wiz/jwt.hex \
+  --discovery.enabled=false \
+  --enr.autoUpdate=false
 
-Generate nodekey
-
-Get enode using bootnode -writeaddress
-
-Share with peers and update everyone's static-nodes.json
-
-Run geth init genesis.json
-
-Launch with --nodiscover etc.
-
+# 14. Start Lodestar validator
+lodestar validator \
+  --dataDir /root/wiz/node1/vc-data \
+  --network /root/wiz/config.yaml \
+  --params.preset=mainnet \
+  --mnemonic "test test test test test test test test test test test junk" \
+  --numValidators 4 \
+  --beaconNodes=http://localhost:9596
