@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # =========================================
-# ✅ Ethereum PoS Devnet Setup - Updated with Lodestar CLI 2025
+# ✅ Ethereum PoS Devnet Setup - Updated for Lodestar & Geth 2025 (Minimal Preset)
 # =========================================
 
 # 1. Install dependencies
 sudo apt update && sudo apt install -y \
   build-essential git curl wget jq make unzip \
-  golang nodejs npm openssl xxd
+  golang nodejs npm openssl xxd python3-venv
 
 # 2. Build and install Geth
 cd ~
@@ -23,7 +23,7 @@ npm install -g @chainsafe/lodestar
 cd ~
 git clone https://github.com/ethpandaops/eth-beacon-genesis.git
 cd eth-beacon-genesis
-go build ./cmd/eth-beacon-genesis
+PRESET_BASE=minimal go build -tags minimal_preset -o eth-beacon-genesis ./cmd/eth-beacon-genesis
 sudo cp eth-beacon-genesis /usr/local/bin/
 
 # 5. Prepare working directory
@@ -69,7 +69,6 @@ cat > genesis.json <<EOF
 }
 EOF
 
-
 # 7. Create config.yaml for consensus layer
 cat > config.yaml <<EOF
 PRESET_BASE: "minimal"
@@ -90,33 +89,39 @@ ELECTRA_FORK_VERSION: 0x05000000
 ELECTRA_FORK_EPOCH: 0
 EOF
 
-# 8. Create mnemonics.yaml
-cat > mnemonics.yaml <<EOF
-- mnemonic: "test test test test test test test test test test test junk"
-  start: 0
-  count: 4
-  balance: 32000000000
-  wd_address: "0x000000000000000000000000000000000000dead"
-  wd_prefix: "0x01"
-EOF
-
-# 9. Create jwt.hex
+# 8. Create jwt.hex
 openssl rand -hex 32 | tr -d "\n" > /root/wiz/jwt.hex
 chmod 600 /root/wiz/jwt.hex
 
-# 10. Generate genesis state
+# 9. Download trusted setup file
+mkdir -p /usr/lib/node_modules/@chainsafe/lodestar/node_modules/@lodestar/beacon-node/
+curl -L -o /usr/lib/node_modules/@chainsafe/lodestar/node_modules/@lodestar/beacon-node/trusted_setup.txt \
+  https://raw.githubusercontent.com/ChainSafe/lodestar/unstable/packages/beacon-node/trusted_setup.txt
+
+# 10. Create validator keys using eth2-deposit-cli
+cd /root/wiz
+git clone https://github.com/ethereum/eth2.0-deposit-cli.git
+cd eth2.0-deposit-cli
+python3 -m venv venv-deposit
+source venv-deposit/bin/activate
+pip install -r requirements.txt
+python setup.py install
+./deposit.sh existing-mnemonic --num_validators=4 --validator_start_index=0 --chain=devnet --folder=/root/wiz/validator_keys
+deactivate
+
+# 11. Generate genesis state
 eth-beacon-genesis devnet \
   --eth1-config /root/wiz/genesis.json \
   --config /root/wiz/config.yaml \
-  --mnemonics /root/wiz/mnemonics.yaml \
+  --mnemonics /root/wiz/eth-beacon-genesis/mnemonics.yaml \
   --state-output /root/wiz/genesis.ssz \
   --json-output /root/wiz/genesis-cl.json
 
-# 11. Initialize Geth
+# 12. Initialize Geth
 mkdir -p /root/wiz/node1/el-data
 geth --datadir /root/wiz/node1/el-data init /root/wiz/genesis.json
 
-# 12. Start Geth
+# 13. Start Geth
 geth --datadir /root/wiz/node1/el-data \
   --networkid 1337 \
   --authrpc.jwtsecret /root/wiz/jwt.hex \
@@ -129,8 +134,8 @@ geth --datadir /root/wiz/node1/el-data \
   --nodiscover \
   --verbosity 3
 
-# 13. Start Lodestar Beacon Node
-lodestar beacon \
+# 14. Start Lodestar Beacon Node
+npx --yes @chainsafe/lodestar beacon \
   --dataDir /root/wiz/node1/cl-data \
   --network=dev \
   --paramsFile /root/wiz/config.yaml \
@@ -141,12 +146,16 @@ lodestar beacon \
   --rest.address=0.0.0.0 \
   --logLevel=info
 
-# 14. Start Lodestar Validator
-lodestar validator \
+# 15. Import validators to Lodestar
+npx --yes @chainsafe/lodestar validator import \
+  --network=dev \
+  --paramsFile /root/wiz/config.yaml \
+  --importKeystores /root/wiz/validator_keys/keystore-* \
+  --importKeystoresPassword /root/wiz/validator_keys/password.txt
+
+# 16. Start Lodestar Validator Client
+npx --yes @chainsafe/lodestar validator \
   --dataDir /root/wiz/node1/vc-data \
   --network=dev \
   --paramsFile /root/wiz/config.yaml \
-  --mnemonic "test test test test test test test test test test test junk" \
-  --numValidators 4 \
   --beaconNodes=http://localhost:9596
-
